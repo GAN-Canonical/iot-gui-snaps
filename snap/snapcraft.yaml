@@ -1,0 +1,189 @@
+name: fork-and-rename-me # you probably want to 'snapcraft register <name>'
+version: git # just for humans, typically '1.2+git' or '1.3.2'
+summary: Single-line elevator pitch for your amazing snap # 79 char long summary
+description: |
+  This is my-snap's description. You have a paragraph or two to tell the
+  most important story about your snap. Keep it under 100 words though,
+  we live in tweetspace and your description wants to look good in the snap
+  store.
+confinement: strict
+compression: lzo
+grade: stable
+base: core20
+
+apps:
+  neverputt:
+    command-chain:
+      - bin/run-daemon
+      - bin/wayland-launch
+    command: usr/games/neverputt
+    daemon: simple
+    restart-condition: always
+    plugs:
+      - opengl
+      - wayland
+      - hardware-observe
+      - audio-playback
+      - joystick
+
+  mastermind:
+    command-chain:
+      - bin/run-daemon
+      - bin/wayland-launch
+    command: usr/games/gnome-mastermind
+    daemon: simple
+    restart-condition: always
+    plugs:
+      - opengl
+      - wayland
+    environment:
+      XDG_DATA_HOME: $SNAP_USER_DATA
+      XDG_DATA_DIRS: $SNAP/usr/share
+      XDG_CONFIG_DIRS: $SNAP/etc/xdg
+
+  bomber:
+    command-chain:
+      - bin/run-daemon
+      - bin/wayland-launch
+      - bin/dbus-launch
+    command: usr/games/bomber
+    daemon: simple
+    restart-condition: always
+    plugs:
+      - opengl
+      - wayland
+      - audio-playback
+      - network-bind
+    environment:
+      QT_QPA_PLATFORM: wayland
+      QT_PLUGIN_PATH: ${SNAP}/usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/qt5/plugins/
+      QT_QPA_PLATFORM_PLUGIN_PATH: ${SNAP}/usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/qt5/plugins/platforms/
+      QML2_IMPORT_PATH: ${SNAP}/usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/qt5/qml
+
+plugs:
+  graphics-core20:
+    interface: content
+    target: $SNAP/graphics
+    default-provider: mesa-core20
+
+environment:
+  LD_LIBRARY_PATH:    $SNAP/graphics/lib:${SNAP}/usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/pulseaudio
+  LIBGL_DRIVERS_PATH: $SNAP/graphics/dri
+  LIBVA_DRIVERS_PATH: $SNAP/graphics/dri
+  __EGL_VENDOR_LIBRARY_DIRS: $SNAP/graphics/glvnd/egl_vendor.d
+  # XDG config
+  XDG_CACHE_HOME:  $SNAP_USER_COMMON/.cache
+  XDG_CONFIG_HOME: $SNAP_USER_DATA/.config
+
+layout:
+  /usr/share/libdrm:  # Needed by mesa-core20 on AMD GPUs
+    bind: $SNAP/graphics/libdrm
+  /usr/share/drirc.d:  # Used by mesa-core20 for app specific workarounds
+    bind: $SNAP/graphics/drirc.d
+  /usr/share/fonts:
+    bind: $SNAP/usr/share/fonts
+  /usr/share/games:
+    bind: $SNAP/usr/share/games
+  /usr/share/icons:
+    bind: $SNAP/usr/share/icons
+  /usr/share/sounds:
+    bind: $SNAP/usr/share/sounds
+  /usr/share/X11:
+    bind: $SNAP/usr/share/X11
+  /etc/fonts:
+    bind: $SNAP/etc/fonts
+  /usr/lib/$SNAPCRAFT_ARCH_TRIPLET/gdk-pixbuf-2.0:
+    bind: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/gdk-pixbuf-2.0
+  /usr/share/mime:
+    bind: $SNAP/usr/share/mime
+  /etc/gtk-3.0:
+    bind: $SNAP/etc/gtk-3.0
+  /etc/xdg:
+    bind: $SNAP/etc/xdg
+  /usr/share/gnome-mastermind:
+    bind: $SNAP/usr/share/gnome-mastermind
+  /usr/share/bomber:
+    bind: $SNAP/usr/share/bomber
+
+parts:
+  neverputt:
+    plugin: dump
+    source: neverputt
+    stage-packages:
+      - neverputt
+      - libsdl2-2.0-0
+      - libsdl2-image-2.0-0
+      - libsdl2-mixer-2.0-0
+      - libsdl2-net-2.0-0
+
+  mastermind:
+    plugin: nil
+    build-packages:
+      - libgdk-pixbuf2.0-0
+      - librsvg2-common
+      - shared-mime-info
+    override-build: |
+      # Update mime database
+      update-mime-database ${SNAPCRAFT_PART_INSTALL}/usr/share/mime
+    stage-packages:
+      - gnome-mastermind
+      - librsvg2-common
+      - gsettings-desktop-schemas
+      - libglib2.0-bin
+    override-prime: |
+      snapcraftctl prime
+      # Compile the gsettings schemas
+      /usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/glib-2.0/glib-compile-schemas "$SNAPCRAFT_PRIME/usr/share/glib-2.0/schemas"
+      # Index the pixbuf loaders
+      GDK_PIXBUF_MODULEDIR=$SNAPCRAFT_PRIME/usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/gdk-pixbuf-2.0/2.10.0/loaders \
+      "/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders" > "$SNAPCRAFT_PRIME/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/gdk-pixbuf-2.0/2.10.0/loaders.cache"
+      sed s!$SNAPCRAFT_PRIME!!g --in-place "$SNAPCRAFT_PRIME/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/gdk-pixbuf-2.0/2.10.0/loaders.cache"
+
+  bomber:
+    plugin: dump
+    source: bomber
+    organize:
+      session.conf: etc/dbus-1/session.conf
+    override-prime: |
+      snapcraftctl prime
+      # replace the SNAP_NAME placeholder with our actual project name
+      sed -i "s/SNAP_NAME/$SNAPCRAFT_PROJECT_NAME/" $SNAPCRAFT_PRIME/etc/dbus-1/session.conf
+    stage-packages:
+      - bomber
+      - qtwayland5
+      - dbus
+
+  mir-kiosk-snap-launch:
+    plugin: dump
+    source: https://github.com/MirServer/mir-kiosk-snap-launch.git
+    source-branch: enable-snap-run
+    override-build:  $SNAPCRAFT_PART_BUILD/build-with-plugs.sh opengl wayland graphics-core20 hardware-observe audio-playback joystick
+    stage-packages:
+      - inotify-tools
+
+  cleanup:
+    after:
+      - neverputt
+      - mastermind
+      - bomber
+      - mir-kiosk-snap-launch
+    plugin: nil
+    build-snaps: [ mesa-core20 ]
+    override-prime: |
+      set -eux
+      cd /snap/mesa-core20/current/egl/lib
+      find . -type f,l -exec rm -f $SNAPCRAFT_PRIME/usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/{} \;
+      rm -fr "$SNAPCRAFT_PRIME/usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/dri"
+      for CRUFT in bug drirc.d glvnd libdrm lintian man; do
+        rm -rf "$SNAPCRAFT_PRIME/usr/share/$CRUFT"
+      done
+      for CRUFT in alsa bash-completion dbus-1 help kconf_update kservices5 libinput locale openal pkgconfig \
+                   applications doc kf5 kservicetypes5 libthai metainfo perl qlogging-categories5 thumbnailers xml \
+                   apport config.kcfg doc-base GConf gnupg info knotifications5 kxmlgui5 libwacom themes sounds ; do
+        rm -rf "$SNAPCRAFT_PRIME/usr/share/$CRUFT"
+      done
+
+architectures:
+  - build-on: amd64
+  - build-on: armhf
+  - build-on: arm64
