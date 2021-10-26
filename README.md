@@ -115,6 +115,11 @@ This uses the launchpad build farm to build each of the architectures supported 
 
 Once the build is complete you can `scp` the `.snap` file to your device and install using `--dangerous`.
 
+    scp -P 10022 *.snap <username>@<hostname>:~
+    ssh -p 10022  <username>@<hostname>
+    snap install ubuntu-frame
+    snap install --dangerous *.snap
+
 ## Snap Packaging GUIs for the Internet of Things
 
 There's a lot of information about packaging snaps online, and the purpose here is not to teach about the snapcraft packaging tool or the Snap store. There are good resources for that elsewhere online. We instead focus on the things that are special to IoT graphics.
@@ -239,7 +244,6 @@ The `apps` stanzas are all pretty similar:
 apps:
   neverputt:
     command-chain:
-      - bin/run-daemon
       - bin/wayland-launch
     command: usr/games/neverputt
     daemon: simple

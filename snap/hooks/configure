@@ -1,0 +1,22 @@
+#!/bin/bash
+set -euo pipefail
+
+daemon=$(snapctl get daemon)
+case "$daemon" in
+  neverputt|mastermind|bomber|false)
+    # start/stop the daemons
+    for service in neverputt mastermind bomber; do
+      if [ "${daemon}" = "${service}" ]; then
+        if snapctl services "$SNAP_INSTANCE_NAME.${service}" | grep -q inactive; then
+          snapctl start --enable "$SNAP_INSTANCE_NAME.${service}" 2>&1 || true
+        fi
+      else
+        snapctl stop --disable "$SNAP_INSTANCE_NAME.${service}" 2>&1 || true
+      fi
+    done
+    ;;
+  *)
+    echo "ERROR: Set 'daemon' to one of neverputt|mastermind|bomber|false"
+    exit 1
+    ;;
+esac

@@ -14,7 +14,6 @@ base: core20
 apps:
   neverputt:
     command-chain:
-      - bin/run-daemon
       - bin/wayland-launch
     command: usr/games/neverputt
     daemon: simple
@@ -28,7 +27,6 @@ apps:
 
   mastermind:
     command-chain:
-      - bin/run-daemon
       - bin/wayland-launch
     command: usr/games/gnome-mastermind
     daemon: simple
@@ -43,7 +41,6 @@ apps:
 
   bomber:
     command-chain:
-      - bin/run-daemon
       - bin/wayland-launch
       - bin/dbus-launch
     command: usr/games/bomber
@@ -158,10 +155,16 @@ parts:
   mir-kiosk-snap-launch:
     plugin: dump
     source: https://github.com/MirServer/mir-kiosk-snap-launch.git
-    source-branch: enable-snap-run
     override-build:  $SNAPCRAFT_PART_BUILD/build-with-plugs.sh opengl wayland graphics-core20 hardware-observe audio-playback joystick
     stage-packages:
       - inotify-tools
+    override-prime: |
+      snapcraftctl prime
+      # We use our own "configure" instead of run-daemon from mir-kiosk-snap-launch
+      rm -f $SNAPCRAFT_PRIME/bin/run-daemon
+      # And we change the default daemon
+      sed -i "s/=true/=bomber/" $SNAPCRAFT_PRIME/meta/hooks/install
+      sed -i "s/=true/=bomber/" $SNAPCRAFT_PRIME/meta/hooks/post-refresh
 
   cleanup:
     after:
