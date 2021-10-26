@@ -59,6 +59,7 @@ apps:
       QT_PLUGIN_PATH: ${SNAP}/usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/qt5/plugins/
       QT_QPA_PLATFORM_PLUGIN_PATH: ${SNAP}/usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/qt5/plugins/platforms/
       QML2_IMPORT_PATH: ${SNAP}/usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/qt5/qml
+      XDG_CONFIG_DIRS: $SNAP/etc/xdg
 
 plugs:
   graphics-core20:
@@ -67,6 +68,7 @@ plugs:
     default-provider: mesa-core20
 
 environment:
+  # Graphics (& audio)
   LD_LIBRARY_PATH:    $SNAP/graphics/lib:${SNAP}/usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/pulseaudio
   LIBGL_DRIVERS_PATH: $SNAP/graphics/dri
   LIBVA_DRIVERS_PATH: $SNAP/graphics/dri
@@ -74,12 +76,15 @@ environment:
   # XDG config
   XDG_CACHE_HOME:  $SNAP_USER_COMMON/.cache
   XDG_CONFIG_HOME: $SNAP_USER_DATA/.config
+  # XKB config
+  XKB_CONFIG_ROOT: $SNAP/usr/share/X11/xkb
 
 layout:
   /usr/share/libdrm:  # Needed by mesa-core20 on AMD GPUs
     bind: $SNAP/graphics/libdrm
   /usr/share/drirc.d:  # Used by mesa-core20 for app specific workarounds
     bind: $SNAP/graphics/drirc.d
+  # Generally useful
   /usr/share/fonts:
     bind: $SNAP/usr/share/fonts
   /usr/share/games:
@@ -88,20 +93,18 @@ layout:
     bind: $SNAP/usr/share/icons
   /usr/share/sounds:
     bind: $SNAP/usr/share/sounds
-  /usr/share/X11:
-    bind: $SNAP/usr/share/X11
   /etc/fonts:
     bind: $SNAP/etc/fonts
+  # gnome-mastermind & GTK
+  /usr/share/gnome-mastermind:
+    bind: $SNAP/usr/share/gnome-mastermind
   /usr/lib/$SNAPCRAFT_ARCH_TRIPLET/gdk-pixbuf-2.0:
     bind: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/gdk-pixbuf-2.0
   /usr/share/mime:
     bind: $SNAP/usr/share/mime
   /etc/gtk-3.0:
     bind: $SNAP/etc/gtk-3.0
-  /etc/xdg:
-    bind: $SNAP/etc/xdg
-  /usr/share/gnome-mastermind:
-    bind: $SNAP/usr/share/gnome-mastermind
+  # bomber
   /usr/share/bomber:
     bind: $SNAP/usr/share/bomber
 
@@ -120,7 +123,6 @@ parts:
     plugin: nil
     build-packages:
       - libgdk-pixbuf2.0-0
-      - librsvg2-common
       - shared-mime-info
     override-build: |
       # Update mime database
@@ -135,9 +137,10 @@ parts:
       # Compile the gsettings schemas
       /usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/glib-2.0/glib-compile-schemas "$SNAPCRAFT_PRIME/usr/share/glib-2.0/schemas"
       # Index the pixbuf loaders
-      GDK_PIXBUF_MODULEDIR=$SNAPCRAFT_PRIME/usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/gdk-pixbuf-2.0/2.10.0/loaders \
-      "/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders" > "$SNAPCRAFT_PRIME/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/gdk-pixbuf-2.0/2.10.0/loaders.cache"
-      sed s!$SNAPCRAFT_PRIME!!g --in-place "$SNAPCRAFT_PRIME/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/gdk-pixbuf-2.0/2.10.0/loaders.cache"
+      LOADERS_PATH=$(echo ${SNAPCRAFT_PRIME}/usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/gdk-pixbuf-2.0/*/loaders)
+      QUERY_LOADERS=/usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders
+      GDK_PIXBUF_MODULEDIR=${LOADERS_PATH} ${QUERY_LOADERS} > ${LOADERS_PATH}/../loaders.cache
+      sed s!$SNAPCRAFT_PRIME!!g --in-place ${LOADERS_PATH}/../loaders.cache
 
   bomber:
     plugin: dump
