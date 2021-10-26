@@ -87,14 +87,15 @@ layout:
   # Generally useful
   /usr/share/fonts:
     bind: $SNAP/usr/share/fonts
-  /usr/share/games:
-    bind: $SNAP/usr/share/games
   /usr/share/icons:
     bind: $SNAP/usr/share/icons
   /usr/share/sounds:
     bind: $SNAP/usr/share/sounds
   /etc/fonts:
     bind: $SNAP/etc/fonts
+  # neverputt [sic]
+  /usr/share/games/neverball:
+    bind: $SNAP/usr/share/games/neverball
   # gnome-mastermind & GTK
   /usr/share/gnome-mastermind:
     bind: $SNAP/usr/share/gnome-mastermind
@@ -145,16 +146,14 @@ parts:
   bomber:
     plugin: dump
     source: bomber
-    organize:
-      session.conf: etc/dbus-1/session.conf
-    override-prime: |
-      snapcraftctl prime
-      # replace the SNAP_NAME placeholder with our actual project name
-      sed -i "s/SNAP_NAME/$SNAPCRAFT_PROJECT_NAME/" $SNAPCRAFT_PRIME/etc/dbus-1/session.conf
     stage-packages:
       - bomber
       - qtwayland5
       - dbus
+    override-prime: |
+      snapcraftctl prime
+      # replace the SNAP_NAME placeholder with our actual project name
+      sed -i "s/SNAP_NAME/$SNAPCRAFT_PROJECT_NAME/" $SNAPCRAFT_PRIME/etc/dbus-1/session.conf
 
   mir-kiosk-snap-launch:
     plugin: dump
