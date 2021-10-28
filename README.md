@@ -115,10 +115,36 @@ This uses the launchpad build farm to build each of the architectures supported 
 
 Once the build is complete you can `scp` the `.snap` file to your device and install using `--dangerous`.
 
+For the sake of these notes I'm using a VM set up using the approach described in [Ubuntu Core: Preparing a virtual machine with graphics support](https://ubuntu.com/tutorials/ubuntu-core-preparing-a-virtual-machine-with-graphics-support). Apart from the address used for scp and ssh this is the same as any other "device". 
+
     scp -P 10022 *.snap <username>@<hostname>:~
     ssh -p 10022  <username>@<hostname>
     snap install ubuntu-frame
     snap install --dangerous *.snap
+
+You'll see the Ubuntu Frame greyscale background, but you won't see any of the games. If you check the logs you'll see why:
+
+    $ snap logs -n 30 fork-and-rename-me
+    2021-10-28T14:39:20Z fork-and-rename-me.mastermind[6712]: WARNING: hardware-observe interface not connected! Please run: /snap/fork-and-rename-me/current/bin/setup.sh
+    2021-10-28T14:39:20Z fork-and-rename-me.neverputt[6714]: WARNING: hardware-observe interface not connected! Please run: /snap/fork-and-rename-me/current/bin/setup.sh
+    2021-10-28T14:39:20Z fork-and-rename-me.bomber[6732]: WARNING: audio-playback interface not connected! Please run: /snap/fork-and-rename-me/current/bin/setup.sh
+    2021-10-28T14:39:20Z fork-and-rename-me.neverputt[6714]: WARNING: audio-playback interface not connected! Please run: /snap/fork-and-rename-me/current/bin/setup.sh
+    2021-10-28T14:39:20Z fork-and-rename-me.bomber[6732]: WARNING: joystick interface not connected! Please run: /snap/fork-and-rename-me/current/bin/setup.sh
+    2021-10-28T14:39:20Z fork-and-rename-me.mastermind[6712]: WARNING: audio-playback interface not connected! Please run: /snap/fork-and-rename-me/current/bin/setup.sh
+    2021-10-28T14:39:21Z fork-and-rename-me.mastermind[6712]: WARNING: joystick interface not connected! Please run: /snap/fork-and-rename-me/current/bin/setup.sh
+    2021-10-28T14:39:21Z fork-and-rename-me.neverputt[6714]: WARNING: joystick interface not connected! Please run: /snap/fork-and-rename-me/current/bin/setup.sh
+    2021-10-28T14:39:21Z fork-and-rename-me.neverputt[6714]: ALSA lib conf.c:4120:(snd_config_update_r) Cannot access file /usr/share/alsa/alsa.conf
+    2021-10-28T14:39:21Z fork-and-rename-me.neverputt[6714]: Failure to initialize SDL (Could not initialize UDEV)
+    ...
+
+All these WARNING message give the clue:
+
+    /snap/fork-and-rename-me/current/bin/setup.sh
+
+After which you should see the "Bomber" start. You can configure the active game using the `daemon` snap configuration:
+
+    snap set fork-and-rename-me daemon=neverputt
+    snap set fork-and-rename-me daemon=mastermind
 
 ## Snap Packaging GUIs for the Internet of Things
 
