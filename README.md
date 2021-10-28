@@ -62,7 +62,9 @@ Now Frame's "Mir on X" should contain the "Bomber" game. Note that SDL2 does not
 
 Close that (Ctrl-C) and try the next example...
 
-Actually, that's enough examples. You can see how to prove that an application is able to work with Ubuntu Frame. The next step is to use snap packaging to prepare the application for use on an "Internet of Things" device.
+Actually, that's enough examples. :grin:
+
+You can see how to prove that an application is able to work with Ubuntu Frame. The next step is to use snap packaging to prepare the application for use on an "Internet of Things" device.
 
 ## Packaging these applications
 
@@ -122,9 +124,24 @@ For the sake of these notes I'm using a VM set up using the approach described i
     snap install ubuntu-frame
     snap install --dangerous *.snap
 
-You'll see the Ubuntu Frame greyscale background, but you won't see any of the games. If you check the logs you'll see why:
+You'll see the Ubuntu Frame greyscale background once that installs, after which you should see the "Bomber" start. 
+
+You can configure the active game using the `daemon` snap configuration:
+
+    snap set fork-and-rename-me daemon=neverputt
+
+You'll see Bomber disappear, but Neverputt doesn't start. You can conform this by listing the daemons:
+
+    $ snap services fork-and-rename-me
+    Service                        Startup   Current   Notes
+    fork-and-rename-me.bomber      disabled  inactive  -
+    fork-and-rename-me.mastermind  disabled  inactive  -
+    fork-and-rename-me.neverputt   enabled   inactive  -
+
+So, while Neverputt is enabled it isn't running. Look at the logs: 
 
     $ snap logs -n 30 fork-and-rename-me
+    ...
     2021-10-28T14:39:20Z fork-and-rename-me.mastermind[6712]: WARNING: hardware-observe interface not connected! Please run: /snap/fork-and-rename-me/current/bin/setup.sh
     2021-10-28T14:39:20Z fork-and-rename-me.neverputt[6714]: WARNING: hardware-observe interface not connected! Please run: /snap/fork-and-rename-me/current/bin/setup.sh
     2021-10-28T14:39:20Z fork-and-rename-me.bomber[6732]: WARNING: audio-playback interface not connected! Please run: /snap/fork-and-rename-me/current/bin/setup.sh
@@ -137,14 +154,16 @@ You'll see the Ubuntu Frame greyscale background, but you won't see any of the g
     2021-10-28T14:39:21Z fork-and-rename-me.neverputt[6714]: Failure to initialize SDL (Could not initialize UDEV)
     ...
 
-All these WARNING message give the clue:
+All these WARNING message give the clue, connect the missing interfaces and manually start the daemon:
 
     /snap/fork-and-rename-me/current/bin/setup.sh
+    snap start fork-and-rename-me.neverputt
 
-After which you should see the "Bomber" start. You can configure the active game using the `daemon` snap configuration:
+You should see Neverputt starting. And, of course, you can also run the Mastermind game:
 
-    snap set fork-and-rename-me daemon=neverputt
     snap set fork-and-rename-me daemon=mastermind
+
+I've shown all the steps needed to get your snap running on a device. The next thing to do would be to publish the application to the Snap Store. There's nothing special about IoT graphics here, so I'll skip that and move on to a closer examination of the snapcraft recipe used by this snap. 
 
 ## Snap Packaging GUIs for the Internet of Things
 
@@ -175,6 +194,138 @@ confinement: strict
 compression: lzo
 grade: stable
 base: core20
+```
+
+### The applications
+
+There are two parts of the [snapcraft.yaml](./snap/snapcraft.yaml) that relate to each application and possibly some additional files.
+
+The `apps` stanzas are all pretty similar:
+
+```yaml
+apps:
+  neverputt:
+    command-chain:
+      - bin/wayland-launch
+    command: usr/games/neverputt
+    daemon: simple
+    restart-condition: always
+    plugs:
+      - opengl
+      - wayland
+      - hardware-observe
+      - audio-playback
+      - joystick
+```
+
+The `command-chain` lists some setup scripts, the `command` is the program to run and the `plugs` are the Snapd interfaces the application needs access to to work.
+
+The `daemon` and `restart-condition` are informing snapd that the app runs as a daemon (which it needs to do for IoT).
+
+#### The Neverputt part
+
+```yaml
+parts:
+  neverputt:
+    plugin: dump
+    source: neverputt
+    stage-packages:
+      - neverputt
+      - libsdl2-2.0-0
+      - libsdl2-image-2.0-0
+      - libsdl2-mixer-2.0-0
+      - libsdl2-net-2.0-0
+```
+
+Applications are installed from repositories (such as the Ubuntu Archive) are controlled using `stage-packages:` which lists the neverputt package and SDL2 toolkit libraries it needs.
+
+Using the `plugin: dump` means the `source: neverputt` directory is copied into the snap. For Neverputt this contains a configuration file that sets the application to fullscreen.
+
+#### The Mastermind part
+
+```yaml
+  mastermind:
+    plugin: nil
+    build-packages:
+      - libgdk-pixbuf2.0-0
+      - shared-mime-info
+    override-build: |
+      # Update mime database
+      update-mime-database ${SNAPCRAFT_PART_INSTALL}/usr/share/mime
+    stage-packages:
+      - gnome-mastermind
+      - librsvg2-common
+      - gsettings-desktop-schemas
+      - libglib2.0-bin
+    override-prime: |
+      snapcraftctl prime
+      # Compile the gsettings schemas
+      /usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/glib-2.0/glib-compile-schemas "$SNAPCRAFT_PRIME/usr/share/glib-2.0/schemas"
+      # Index the pixbuf loaders
+      LOADERS_PATH=$(echo ${SNAPCRAFT_PRIME}/usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/gdk-pixbuf-2.0/*/loaders)
+      QUERY_LOADERS=/usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders
+      GDK_PIXBUF_MODULEDIR=${LOADERS_PATH} ${QUERY_LOADERS} > ${LOADERS_PATH}/../loaders.cache
+      sed s!$SNAPCRAFT_PRIME!!g --in-place ${LOADERS_PATH}/../loaders.cache
+```
+
+Applications are installed from repositories (such as the Ubuntu Archive) are controlled using `stage-packages:` which lists the gnome-mastermind package and the SVG, Gsettings and GLib libraries it needs.
+
+The `build-packages`, `override-build` and `override-prime` stanzas are there to incorporate the mime database and pixbuf loaders into the snap. This setup of mime database and pixbuf loaders is done differently for IoT as the snap cannot rely on getting these from the host environment.
+
+#### The Bomber Part
+
+```yaml
+  bomber:
+    plugin: dump
+    source: bomber
+    stage-packages:
+      - bomber
+      - qtwayland5
+      - dbus
+    override-prime: |
+      snapcraftctl prime
+      # replace the SNAP_NAME placeholder with our actual project name
+      sed -i "s/SNAP_NAME/$SNAPCRAFT_PROJECT_NAME/" $SNAPCRAFT_PRIME/etc/dbus-1/session.conf
+```
+
+Because Bomber won't run without a session dbus, and this isn't available to daemons on core (there is no "session") we need to include a dbus session in the snap. The `source: bomber` contains a script and configuration file for running `dbus-run-session`.
+
+### The layout
+
+The `layout` ensures that files can be found by applications where they are expected by the toolkit or application.
+
+Because there is only one `layout` stanza this contain a mixture of generally useful paths and those specific to individual applications and toolkits. If you're packaging a single application, can be simplified.
+
+```yaml
+layout:
+  /usr/share/libdrm:  # Needed by mesa-core20 on AMD GPUs
+    bind: $SNAP/graphics/libdrm
+  /usr/share/drirc.d:  # Used by mesa-core20 for app specific workarounds
+    bind: $SNAP/graphics/drirc.d
+  # Generally useful
+  /usr/share/fonts:
+    bind: $SNAP/usr/share/fonts
+  /usr/share/icons:
+    bind: $SNAP/usr/share/icons
+  /usr/share/sounds:
+    bind: $SNAP/usr/share/sounds
+  /etc/fonts:
+    bind: $SNAP/etc/fonts
+  # neverputt
+  /usr/share/games/neverball:
+    bind: $SNAP/usr/share/games/neverball
+  # gnome-mastermind & GTK
+  /usr/share/gnome-mastermind:
+    bind: $SNAP/usr/share/gnome-mastermind
+  /usr/lib/$SNAPCRAFT_ARCH_TRIPLET/gdk-pixbuf-2.0:
+    bind: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/gdk-pixbuf-2.0
+  /usr/share/mime:
+    bind: $SNAP/usr/share/mime
+  /etc/gtk-3.0:
+    bind: $SNAP/etc/gtk-3.0
+  # bomber
+  /usr/share/bomber:
+    bind: $SNAP/usr/share/bomber
 ```
 
 ### The graphics-core20 plug and environment
@@ -222,134 +373,24 @@ layout:
       done
 ```
 
-### The layout
-
-The `layout` ensures that files can be found by applications where they are expected by the toolkit or application.
-
-Because there is only one `layout` stanza this contain a mixture of generally useful paths and those specific to individual applications and toolkits. If you're packaging a single application, can be simplified.
+### The mir-kiosk-snap-launch Part
 
 ```yaml
-layout:
-  /usr/share/libdrm:  # Needed by mesa-core20 on AMD GPUs
-    bind: $SNAP/graphics/libdrm
-  /usr/share/drirc.d:  # Used by mesa-core20 for app specific workarounds
-    bind: $SNAP/graphics/drirc.d
-  # Generally useful
-  /usr/share/fonts:
-    bind: $SNAP/usr/share/fonts
-  /usr/share/icons:
-    bind: $SNAP/usr/share/icons
-  /usr/share/sounds:
-    bind: $SNAP/usr/share/sounds
-  /etc/fonts:
-    bind: $SNAP/etc/fonts
-  # neverputt
-  /usr/share/games/neverball:
-    bind: $SNAP/usr/share/games/neverball
-  # gnome-mastermind & GTK
-  /usr/share/gnome-mastermind:
-    bind: $SNAP/usr/share/gnome-mastermind
-  /usr/lib/$SNAPCRAFT_ARCH_TRIPLET/gdk-pixbuf-2.0:
-    bind: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/gdk-pixbuf-2.0
-  /usr/share/mime:
-    bind: $SNAP/usr/share/mime
-  /etc/gtk-3.0:
-    bind: $SNAP/etc/gtk-3.0
-  # bomber
-  /usr/share/bomber:
-    bind: $SNAP/usr/share/bomber
-```
-
-### The applications
-
-There are two parts of the [snapcraft.yaml](./snap/snapcraft.yaml) that relate to each application and possibly some additional files.
-
-The `apps` stanzas are all pretty similar:
-
-```yaml
-apps:
-  neverputt:
-    command-chain:
-      - bin/wayland-launch
-    command: usr/games/neverputt
-    daemon: simple
-    restart-condition: always
-    plugs:
-      - opengl
-      - wayland
-      - hardware-observe
-      - audio-playback
-      - joystick
-```
-
-The `command-chain` lists some setup scripts, the `command` is the program to run and the `plugs` are the Snapd interfaces the application needs access to to work.
-
-The `daemon` and `restart-condition` are informing snapd that the app runs as a daemon (which it needs to do for IoT).
-
-#### The Neverputt part 
-
-```yaml
-parts:
-  neverputt:
+  mir-kiosk-snap-launch:
     plugin: dump
-    source: neverputt
+    source: https://github.com/MirServer/mir-kiosk-snap-launch.git
+    override-build:  $SNAPCRAFT_PART_BUILD/build-with-plugs.sh opengl wayland graphics-core20 hardware-observe audio-playback joystick
     stage-packages:
-      - neverputt
-      - libsdl2-2.0-0
-      - libsdl2-image-2.0-0
-      - libsdl2-mixer-2.0-0
-      - libsdl2-net-2.0-0
-```
-
-Applications are installed from repositories (such as the Ubuntu Archive) are controlled using `stage-packages:` which lists the neverputt package and SDL2 toolkit libraries it needs.
-
-Using the `plugin: dump` means the `source: neverputt` directory is copied into the snap. For Neverputt this contains a configuration file that sets the application to fullscreen.
-
-#### The Mastermind part 
-
-```yaml
-  mastermind:
-    plugin: nil
-    build-packages:
-      - libgdk-pixbuf2.0-0
-      - shared-mime-info
-    override-build: |
-      # Update mime database
-      update-mime-database ${SNAPCRAFT_PART_INSTALL}/usr/share/mime
-    stage-packages:
-      - gnome-mastermind
-      - librsvg2-common
-      - gsettings-desktop-schemas
-      - libglib2.0-bin
+      - inotify-tools
     override-prime: |
       snapcraftctl prime
-      # Compile the gsettings schemas
-      /usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/glib-2.0/glib-compile-schemas "$SNAPCRAFT_PRIME/usr/share/glib-2.0/schemas"
-      # Index the pixbuf loaders
-      LOADERS_PATH=$(echo ${SNAPCRAFT_PRIME}/usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/gdk-pixbuf-2.0/*/loaders)
-      QUERY_LOADERS=/usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders
-      GDK_PIXBUF_MODULEDIR=${LOADERS_PATH} ${QUERY_LOADERS} > ${LOADERS_PATH}/../loaders.cache
-      sed s!$SNAPCRAFT_PRIME!!g --in-place ${LOADERS_PATH}/../loaders.cache
+      # We use our own "configure" instead of run-daemon from mir-kiosk-snap-launch
+      rm -f $SNAPCRAFT_PRIME/bin/run-daemon
+      # And we change the default daemon
+      sed -i "s/=true/=bomber/" $SNAPCRAFT_PRIME/meta/hooks/install
+      sed -i "s/=true/=bomber/" $SNAPCRAFT_PRIME/meta/hooks/post-refresh
 ```
 
-Applications are installed from repositories (such as the Ubuntu Archive) are controlled using `stage-packages:` which lists the gnome-mastermind package and the SVG, Gsettings and GLib libraries it needs.
+The [mir-kiosk-snap-launch](https://github.com/MirServer/mir-kiosk-snap-launch) project on Github provides some utilities for setting up what we were calling "kiosk snap" when we wrote it.
 
-The `build-packages`, `override-build` and `override-prime` stanzas are there to incorporate the mime database and pixbuf loaders into the snap. This setup of mime database and pixbuf loaders is done differently for IoT as the snap cannot rely on getting these from the host environment.
-
-#### The Bomber Part
-
-```yaml
-  bomber:
-    plugin: dump
-    source: bomber
-    stage-packages:
-      - bomber
-      - qtwayland5
-      - dbus
-    override-prime: |
-      snapcraftctl prime
-      # replace the SNAP_NAME placeholder with our actual project name
-      sed -i "s/SNAP_NAME/$SNAPCRAFT_PROJECT_NAME/" $SNAPCRAFT_PRIME/etc/dbus-1/session.conf
-```
-
-Because Bomber won't run without a session dbus, and this isn't available to daemons on core (there is no "session") we need to include a dbus session in the snap. The `source: bomber` contains a script and configuration file for running `dbus-run-session`.  
+We've adapted it a bit with an unusual `override-prime` for this project as we wanted to have show using multiple graphics toolkits. (Most projects won't need these changes.)
